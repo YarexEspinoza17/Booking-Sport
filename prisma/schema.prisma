@@ -1,0 +1,111 @@
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client { provider = "prisma-client-js" }
+
+model Organization {
+  id        String  @id @default(uuid())
+  slug      String  @unique
+  name      String
+  venues    Venue[]
+  users     User[]
+  createdAt DateTime @default(now())
+}
+
+model Venue {
+  id             String  @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  courts         Court[]
+  employees      EmployeeAssignment[]
+  createdAt      DateTime @default(now())
+  @@index([organizationId])
+}
+
+model Court {
+  id       String @id @default(uuid())
+  venueId  String
+  venue    Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  name     String
+  type     String
+  reservations Reservation[]
+  @@index([venueId])
+}
+
+enum ReservationStatus { HELD PENDING_PAYMENT CONFIRMED CANCELLED REFUNDED NO_SHOW }
+
+model Reservation {
+  id             String  @id @default(uuid())
+  organizationId String
+  venueId        String
+  courtId        String
+  userId         String?
+  startTime      DateTime
+  endTime        DateTime
+  priceCrc       Int
+  status         ReservationStatus @default(HELD)
+  paymentId      String?
+  createdAt      DateTime @default(now())
+  court Court @relation(fields: [courtId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, venueId, courtId, startTime, endTime])
+  @@index([status])
+}
+
+model ReservationHold {
+  id             String   @id @default(uuid())
+  organizationId String
+  venueId        String
+  courtId        String
+  startTime      DateTime
+  endTime        DateTime
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  @@index([organizationId, venueId, courtId, startTime, endTime])
+  @@index([expiresAt])
+}
+
+enum PaymentStatus { INITIATED AUTHORIZED CAPTURED FAILED REFUNDED PARTIAL_REFUNDED }
+
+model Payment {
+  id             String @id @default(uuid())
+  organizationId String
+  reservationId  String
+  provider       String
+  externalId     String @unique
+  status         PaymentStatus @default(INITIATED)
+  amountCrc      Int
+  createdAt      DateTime @default(now())
+  reservation    Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  @@index([organizationId])
+}
+
+model WebhookEvent {
+  id         String @id @default(uuid())
+  provider   String
+  eventType  String
+  externalId String @unique
+  payload    Json
+  createdAt  DateTime @default(now())
+}
+
+model User {
+  id             String @id @default(uuid())
+  organizationId String
+  email          String @unique
+  name           String?
+  role           String
+  createdAt      DateTime @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments    EmployeeAssignment[]
+  @@index([organizationId])
+}
+
+model EmployeeAssignment {
+  id       String @id @default(uuid())
+  userId   String
+  venueId  String
+  user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue    Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  @@unique([userId, venueId])
+  @@index([venueId])
+}
