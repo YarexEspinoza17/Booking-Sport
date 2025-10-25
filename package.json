@@ -12,20 +12,39 @@
     "studio": "prisma studio"
   },
   "dependencies": {
+    "@prisma/client": "^6.17.1",
+    "bcryptjs": "^3.0.2",
+    "ioredis": "5.4.1",
+    "lucide-react": "^0.548.0",
     "next": "14.2.12",
+    "next-auth": "5.0.0-beta.25",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "@prisma/client": "5.19.1",
-    "prisma": "5.19.1",
-    "zod": "3.23.8",
-    "ioredis": "5.4.1",
-    "next-auth": "5.0.0-beta.25"
+    "zod": "3.23.8"
   },
   "devDependencies": {
-    "typescript": "5.6.3",
-    "eslint": "9.11.1",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "20.14.12",
     "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0"
-  }
+    "@types/react-dom": "18.3.0",
+    "autoprefixer": "^10.4.21",
+    "eslint": "9.11.1",
+    "postcss": "^8.5.6",
+    "prisma": "^6.17.1",
+    "tailwindcss": "^3.4.13",
+    "typescript": "5.6.3"
+  },
+  "description": "Arquitectura base para un sistema de reservas multi-tenant (subdominios por organización), con bloqueo temporal de horarios (holds con Redis) e integración de pagos (Tilopay) vía webhook con idempotencia.",
+  "main": "next.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YarexEspinoza17/Booking-Sport.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/YarexEspinoza17/Booking-Sport/issues"
+  },
+  "homepage": "https://github.com/YarexEspinoza17/Booking-Sport#readme"
 }

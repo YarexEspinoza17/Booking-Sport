@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* variables y estilos globales */
+:root {
+  --color-primary: 220 70% 50%;
+  --color-secondary: 260 90% 58%;
+  --color-tertiary: 180 85% 40%;
+  --color-quaternary: 35 95% 54%;
+  --color-quinary: 330 80% 58%;
+
+  --color-bg: 0 0% 100%;
+  --color-card: 0 0% 100%;
+  --color-muted: 0 0% 96%;
+  --color-border: 0 0% 89%;
+  --color-text: 222 47% 11%;
+  --color-text-weak: 215 14% 34%;
+}
+
+html, body {
+  height: 100%;
+  background: hsl(var(--color-bg));
+  color: hsl(var(--color-text));
+}

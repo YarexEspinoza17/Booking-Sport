@@ -1,25 +1,34 @@
-import { NextResponse, NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-export function middleware(req: NextRequest) {
-  const url = new URL(req.url);
-  const host = req.headers.get("host") || url.host;
-  const rootDomain = process.env.ROOT_DOMAIN || "localhost";
+// solo protege endpoints de API del superadmin
+export const config = {
+  matcher: ["/api/superadmin/:path*"],   // 👈 nada de /superadmin páginas
+};
 
-  let subdomain: string | null = null;
-  if (host.endsWith(rootDomain)) {
-    const parts = host.replace(`.${rootDomain}`, "").split(".");
-    if (parts.length >= 1 && parts[0] !== rootDomain) {
-      subdomain = parts[0] === "www" ? null : parts[0];
-    }
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // Deja pasar totalmente NextAuth
+  if (pathname.startsWith("/api/auth")) return NextResponse.next();
+
+  // Cookie de sesión correcta en dev/prod
+  const cookieName =
+    process.env.NODE_ENV === "production"
+      ? "__Secure-next-auth.session-token"
+      : "next-auth.session-token";
+
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+    cookieName,
+  });
+
+  const role = (token as any)?.role;
+
+  if (!role || role !== "SUPER_ADMIN") {
+    return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  const res = NextResponse.next();
-  if (subdomain) res.headers.set("x-org", subdomain);
-  return res;
+  return NextResponse.next();
 }
-
-export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
-  ],
-};

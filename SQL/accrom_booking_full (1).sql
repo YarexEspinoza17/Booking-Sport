@@ -1,4 +1,3 @@
-
 -- =========================================================
 -- ACCROM Booking – Esquema completo para Supabase/Postgres
 -- Multi-tenant (subdominios), reservas con buffers & holds,
@@ -31,11 +30,14 @@ begin
 end$$;
 
 -- 2) Helpers
--- Acceso a claims del JWT (Supabase): auth.jwt() -> JSON con claims personalizados.
--- Asumimos que agregas un claim 'org_id' (UUID de la organización) al JWT.
+-- Acceso a claims del JWT (Supabase):
+-- Recomendado: agregar 'org_id' dentro de app_metadata en el JWT.
 create or replace function fn_current_org_id()
-returns uuid language sql stable as $$
-  select nullif(auth.jwt() ->> 'org_id','')::uuid;
+returns uuid
+language sql
+stable
+as $$
+  select nullif(auth.jwt() -> 'app_metadata' ->> 'org_id','')::uuid;
 $$;
 
 -- 3) Tablas núcleo de multi-tenant
@@ -77,7 +79,7 @@ create index if not exists idx_employee_org on employee(org_id);
 
 -- Asignación de empleado a sede (opcional múltiples sedes)
 create table if not exists employee_site (
-  id         uuid primary key default gen_random_uuid(),
+  id          uuid primary key default gen_random_uuid(),
   employee_id uuid not null references employee(id) on delete cascade,
   site_id     uuid not null references site(id) on delete cascade,
   created_at  timestamptz not null default now(),
@@ -113,10 +115,10 @@ create index if not exists idx_court_type on court(court_type_id);
 
 -- Disponibilidad semanal (horarios tipo)
 create table if not exists court_weekly_schedule (
-  id         uuid primary key default gen_random_uuid(),
-  org_id     uuid not null references org(id) on delete cascade,
-  court_id   uuid not null references court(id) on delete cascade,
-  dow        int  not null check (dow between 0 and 6), -- 0=Domingo
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null references org(id) on delete cascade,
+  court_id    uuid not null references court(id) on delete cascade,
+  dow         int  not null check (dow between 0 and 6), -- 0=Domingo
   start_local time not null,
   end_local   time not null,
   created_at  timestamptz not null default now(),
@@ -135,7 +137,8 @@ create table if not exists court_blackout (
   created_at timestamptz not null default now(),
   constraint chk_blackout check (ends_at > starts_at)
 );
-create index if not exists idx_blackout_range on court_blackout using gist (court_id, tstzrange(starts_at, ends_at, '[)'));
+create index if not exists idx_blackout_range
+  on court_blackout using gist (court_id, tstzrange(starts_at, ends_at, '[)'));
 
 -- 5) Precios
 create table if not exists court_base_price (
@@ -158,7 +161,7 @@ create table if not exists price_rule (
   start_local time null,
   end_local   time null,
   multiplier  numeric(6,3) null,  -- p.ej. 1.25 = +25%
-  add_int     int null,           -- ajuste fijo
+  add_int     int null,           -- ajuste fijo (+/- en céntimos)
   created_at  timestamptz not null default now()
 );
 create index if not exists idx_price_rule_court on price_rule(court_id, dow, start_local, end_local);
@@ -177,37 +180,51 @@ create index if not exists idx_customer_phone on customer(org_id, phone);
 
 -- 7) Reservas y holds
 create table if not exists reservation (
-  id             uuid primary key default gen_random_uuid(),
-  org_id         uuid not null references org(id) on delete cascade,
-  site_id        uuid not null references site(id) on delete cascade,
-  court_id       uuid not null references court(id) on delete cascade,
-  customer_id    uuid references customer(id) on delete set null,
-  created_by     uuid references employee(id) on delete set null,
-  start_time     timestamptz not null,
-  end_time       timestamptz not null,
+  id              uuid primary key default gen_random_uuid(),
+  org_id          uuid not null references org(id) on delete cascade,
+  site_id         uuid not null references site(id) on delete cascade,
+  court_id        uuid not null references court(id) on delete cascade,
+  customer_id     uuid references customer(id) on delete set null,
+  created_by      uuid references employee(id) on delete set null,
+  start_time      timestamptz not null,
+  end_time        timestamptz not null,
   effective_range tstzrange  not null,  -- con buffers aplicados
-  currency       ccy not null default 'CRC',
-  price_int      int not null,
-  status         reservation_status not null default 'HELD',
+  currency        ccy not null default 'CRC',
+  price_int       int not null,
+  status          reservation_status not null default 'HELD',
   hold_expires_at timestamptz,
-  payment_id     uuid,
-  notes          text,
-  created_at     timestamptz not null default now(),
+  payment_id      uuid,
+  notes           text,
+  created_at      timestamptz not null default now(),
   constraint chk_reservation_range check (end_time > start_time)
 );
-create index if not exists idx_reservation_org_site_court on reservation(org_id, site_id, court_id, start_time, end_time);
+create index if not exists idx_reservation_org_site_court
+  on reservation(org_id, site_id, court_id, start_time, end_time);
 create index if not exists idx_reservation_status on reservation(status);
-create index if not exists idx_reservation_effective on reservation using gist (court_id, effective_range);
+create index if not exists idx_reservation_effective
+  on reservation using gist (court_id, effective_range);
 
 -- Evita solapes usando el rango efectivo (bloquea HELD/PENDING_PAYMENT/CONFIRMED)
+-- (1) Asegura que no exista previamente
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'ex_reservation_overlap'
+      and conrelid = 'reservation'::regclass
+  ) then
+    alter table reservation drop constraint ex_reservation_overlap;
+  end if;
+end$$;
+
+-- (2) Crea la EXCLUDE SIN NOT VALID (no se permite NOT VALID en EXCLUDE)
 alter table reservation
   add constraint ex_reservation_overlap
   exclude using gist (
-    court_id with =,
+    court_id        with =,
     effective_range with &&
-  ) where (status in ('HELD','PENDING_PAYMENT','CONFIRMED'))
-  not valid;
-alter table reservation validate constraint ex_reservation_overlap;
+  )
+  where (status in ('HELD','PENDING_PAYMENT','CONFIRMED'));
 
 -- Holds en tabla separada (para auditoría/limpieza)
 create table if not exists reservation_hold (
@@ -220,7 +237,8 @@ create table if not exists reservation_hold (
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
 );
-create index if not exists idx_reservation_hold_main on reservation_hold(org_id, site_id, court_id, expires_at);
+create index if not exists idx_reservation_hold_main
+  on reservation_hold(org_id, site_id, court_id, expires_at);
 
 -- 8) Pagos (Tilopay)
 create table if not exists payment (
@@ -251,7 +269,9 @@ create table if not exists webhook_event (
 
 -- Calcula el rango efectivo aplicando buffers definidos en la cancha
 create or replace function fn_reservation_apply_buffers()
-returns trigger language plpgsql as $$
+returns trigger
+language plpgsql
+as $$
 declare
   before_min int;
   after_min  int;
@@ -285,7 +305,9 @@ execute function fn_reservation_apply_buffers();
 
 -- Expiración automática de reservas en HELD (si hold_expires_at pasó)
 create or replace function fn_expire_holds(now_ts timestamptz default now())
-returns int language plpgsql as $$
+returns int
+language plpgsql
+as $$
 declare
   n int;
 begin
@@ -295,59 +317,73 @@ begin
      and r.hold_expires_at is not null
      and r.hold_expires_at < now_ts;
   get diagnostics n = row_count;
+
   -- Limpia holds expirados
   delete from reservation_hold where expires_at < now_ts;
+
   return n;
 end;
 $$;
 
--- 10) RLS (Row Level Security)
+-- 10) RLS (Row Level Security) — BLOQUE CORREGIDO (sin IF NOT EXISTS)
 
 -- Habilitar RLS
-alter table org            enable row level security;
-alter table org_domain     enable row level security;
-alter table site           enable row level security;
-alter table employee       enable row level security;
-alter table employee_site  enable row level security;
-alter table court_type     enable row level security;
-alter table court          enable row level security;
-alter table court_weekly_schedule enable row level security;
-alter table court_blackout enable row level security;
-alter table court_base_price enable row level security;
-alter table price_rule     enable row level security;
-alter table customer       enable row level security;
-alter table reservation    enable row level security;
-alter table reservation_hold enable row level security;
-alter table payment        enable row level security;
-alter table webhook_event  enable row level security;
+alter table org                     enable row level security;
+alter table org_domain              enable row level security;
+alter table site                    enable row level security;
+alter table employee                enable row level security;
+alter table employee_site           enable row level security;
+alter table court_type              enable row level security;
+alter table court                   enable row level security;
+alter table court_weekly_schedule   enable row level security;
+alter table court_blackout          enable row level security;
+alter table court_base_price        enable row level security;
+alter table price_rule              enable row level security;
+alter table customer                enable row level security;
+alter table reservation             enable row level security;
+alter table reservation_hold        enable row level security;
+alter table payment                 enable row level security;
+alter table webhook_event           enable row level security;
 
--- Políticas por organización (JWT claim org_id)
--- ORG
-create policy if not exists org_select on org
+-- ORG (ajusta si quieres restringir a service role en prod)
+drop policy if exists org_select on org;
+create policy org_select on org
   for select using (true);
-create policy if not exists org_insert on org
+
+drop policy if exists org_insert on org;
+create policy org_insert on org
   for insert with check (true);
-create policy if not exists org_update on org
+
+drop policy if exists org_update on org;
+create policy org_update on org
   for update using (true) with check (true);
 
 -- ORG_DOMAIN
-create policy if not exists org_domain_rw on org_domain
-  for all using (org_id = fn_current_org_id())
+drop policy if exists org_domain_rw on org_domain;
+create policy org_domain_rw on org_domain
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- SITE
-create policy if not exists site_rw on site
-  for all using (org_id = fn_current_org_id())
+drop policy if exists site_rw on site;
+create policy site_rw on site
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- EMPLOYEE
-create policy if not exists employee_rw on employee
-  for all using (org_id = fn_current_org_id())
+drop policy if exists employee_rw on employee;
+create policy employee_rw on employee
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- EMPLOYEE_SITE
-create policy if not exists employee_site_rw on employee_site
-  for all using (
+drop policy if exists employee_site_rw on employee_site;
+create policy employee_site_rw on employee_site
+  for all
+  using (
     exists (select 1 from employee e where e.id = employee_id and e.org_id = fn_current_org_id())
     and exists (select 1 from site s where s.id = site_id and s.org_id = fn_current_org_id())
   )
@@ -357,60 +393,84 @@ create policy if not exists employee_site_rw on employee_site
   );
 
 -- COURT_TYPE
-create policy if not exists court_type_rw on court_type
-  for all using (org_id = fn_current_org_id())
+drop policy if exists court_type_rw on court_type;
+create policy court_type_rw on court_type
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- COURT
-create policy if not exists court_rw on court
-  for all using (org_id = fn_current_org_id())
+drop policy if exists court_rw on court;
+create policy court_rw on court
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- COURT_WEEKLY_SCHEDULE
-create policy if not exists cws_rw on court_weekly_schedule
-  for all using (org_id = fn_current_org_id())
+drop policy if exists cws_rw on court_weekly_schedule;
+create policy cws_rw on court_weekly_schedule
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- COURT_BLACKOUT
-create policy if not exists cblk_rw on court_blackout
-  for all using (org_id = fn_current_org_id())
+drop policy if exists cblk_rw on court_blackout;
+create policy cblk_rw on court_blackout
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- COURT_BASE_PRICE
-create policy if not exists cbp_rw on court_base_price
-  for all using (org_id = fn_current_org_id())
+drop policy if exists cbp_rw on court_base_price;
+create policy cbp_rw on court_base_price
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- PRICE_RULE
-create policy if not exists pr_rw on price_rule
-  for all using (org_id = fn_current_org_id())
+drop policy if exists pr_rw on price_rule;
+create policy pr_rw on price_rule
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- CUSTOMER
-create policy if not exists customer_rw on customer
-  for all using (org_id = fn_current_org_id())
+drop policy if exists customer_rw on customer;
+create policy customer_rw on customer
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- RESERVATION
-create policy if not exists reservation_rw on reservation
-  for all using (org_id = fn_current_org_id())
+drop policy if exists reservation_rw on reservation;
+create policy reservation_rw on reservation
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- RESERVATION_HOLD
-create policy if not exists rh_rw on reservation_hold
-  for all using (org_id = fn_current_org_id())
+drop policy if exists rh_rw on reservation_hold;
+create policy rh_rw on reservation_hold
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- PAYMENT
-create policy if not exists payment_rw on payment
-  for all using (org_id = fn_current_org_id())
+drop policy if exists payment_rw on payment;
+create policy payment_rw on payment
+  for all
+  using (org_id = fn_current_org_id())
   with check (org_id = fn_current_org_id());
 
 -- WEBHOOK_EVENT (lectura opcional; inserts desde backend con service role)
-create policy if not exists wh_select on webhook_event
+drop policy if exists wh_select on webhook_event;
+create policy wh_select on webhook_event
   for select using (true);
-create policy if not exists wh_insert on webhook_event
+
+drop policy if exists wh_insert on webhook_event;
+create policy wh_insert on webhook_event
   for insert with check (true);
+
 
 -- 11) Checks de coherencia opcionales
 -- Exigir hold_expires_at cuando status = HELD
@@ -418,8 +478,7 @@ alter table reservation
   drop constraint if exists chk_res_hold_expire;
 alter table reservation
   add constraint chk_res_hold_expire
-  check (status <> 'HELD' or hold_expires_at is not null) not valid;
-alter table reservation validate constraint chk_res_hold_expire;
+  check (status <> 'HELD' or hold_expires_at is not null);
 
 -- 12) Semillas mínimas (opcional)
 -- insert into org (slug, name) values ('demo-org','Demo Org') on conflict do nothing;
