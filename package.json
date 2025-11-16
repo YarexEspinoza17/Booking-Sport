@@ -12,15 +12,24 @@
     "studio": "prisma studio"
   },
   "dependencies": {
+    "@hookform/resolvers": "^3.3.4",
     "@prisma/client": "^6.17.1",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.4",
     "bcryptjs": "^3.0.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "ioredis": "5.4.1",
     "lucide-react": "^0.548.0",
     "next": "14.2.12",
     "next-auth": "5.0.0-beta.25",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "zod": "3.23.8"
+    "react-hook-form": "^7.66.0",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -32,7 +41,8 @@
     "postcss": "^8.5.6",
     "prisma": "^6.17.1",
     "tailwindcss": "^3.4.13",
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "vitest": "^4.0.8"
   },
   "description": "Arquitectura base para un sistema de reservas multi-tenant (subdominios por organización), con bloqueo temporal de horarios (holds con Redis) e integración de pagos (Tilopay) vía webhook con idempotencia.",
   "main": "next.config.js",

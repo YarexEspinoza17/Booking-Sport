@@ -12,7 +12,7 @@ export default function Topbar() {
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* breadcrumb simple */}
         <nav className="text-sm">
-          <span className="font-semibold">Super Admin TopbarS</span>
+          <span className="font-semibold">Super Admin</span>
           {parts.map((p, i) => (
             <span key={i} className="text-[color:hsl(var(--color-text-weak))]">
               {" "}/ {p}
@@ -29,7 +29,7 @@ export default function Topbar() {
             onClick={() => signOut({ callbackUrl: "/superadmin/login" })}
             className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium hover:shadow-soft"
           >
-            Salir
+            Cerrar Seccion
           </button>
         </div>
       </div>

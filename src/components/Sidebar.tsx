@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Building2, MapPin, Users, BadgeDollarSign } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, Users, BadgeDollarSign, ToolCaseIcon } from "lucide-react";
 
 const items = [
   { href: "/superadmin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/superadmin/orgs", label: "Organizaciones", icon: Building2 },
   { href: "/superadmin/sites", label: "Sedes", icon: MapPin },
+  { href: "/superadmin/", label: "Settings", icon: ToolCaseIcon },
   { href: "/superadmin/users", label: "Usuarios", icon: Users },
   { href: "/superadmin/billing", label: "Facturación", icon: BadgeDollarSign },
 ];
@@ -19,7 +20,7 @@ export default function Sidebar() {
       <div className="px-5 py-4">
         <Link href="/superadmin" className="block">
           <div className="text-xl font-extrabold tracking-tight">
-            ACCROM <span className="text-primary">Admin</span>
+            AACROM <span className="text-primary">Admin</span>
           </div>
           <div className="text-sm text-[color:hsl(var(--color-text-weak))]">Super Administrador</div>
         </Link>
@@ -47,7 +48,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="px-4 py-4 text-xs text-[color:hsl(var(--color-text-weak))]">
-        v0.1 • Design tokens
+        &copy; {new Date().getFullYear()} AACROM. Todos los derechos reservados.
       </div>
     </div>
   );

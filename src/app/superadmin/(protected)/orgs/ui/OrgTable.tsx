@@ -1,5 +1,4 @@
 type Org = { id: string; name: string; slug: string; created_at: string };
-
 export default function OrgTable({ data }: { data: Org[] }) {
   if (!data.length) {
     return (

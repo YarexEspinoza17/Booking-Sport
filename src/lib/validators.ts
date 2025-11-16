@@ -38,3 +38,24 @@ export const SiteUpdateSchema = z.object({
   name: z.string().min(2).optional(),
   timezone: z.string().optional()
 });
+
+
+export const WeeklyCreateSchema = z.object({
+  dow: z.number().int().min(0).max(6),
+  start_local: z.string().regex(/^\d{2}:\d{2}$/), // "HH:mm"
+  end_local: z.string().regex(/^\d{2}:\d{2}$/),
+});
+
+export const WeeklyUpdateSchema = WeeklyCreateSchema.partial();
+
+export const BlackoutCreateSchema = z.object({
+  // acepta "2025-11-10T09:00", "2025-11-10T09:00:00Z", etc.
+  starts_at: z.coerce.date(),
+  ends_at:   z.coerce.date(),
+  reason:    z.string().max(250).optional().nullable(),
+});
+
+export const BlackoutUpdateSchema = BlackoutCreateSchema.partial();
+
+
+
