@@ -6,7 +6,6 @@ import { LayoutDashboard, Building2, MapPin, Users, BadgeDollarSign, ToolCaseIco
 const items = [
   { href: "/superadmin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/superadmin/orgs", label: "Organizaciones", icon: Building2 },
-  { href: "/superadmin/sites", label: "Sedes", icon: MapPin },
   { href: "/superadmin/", label: "Settings", icon: ToolCaseIcon },
   { href: "/superadmin/users", label: "Usuarios", icon: Users },
   { href: "/superadmin/billing", label: "Facturación", icon: BadgeDollarSign },

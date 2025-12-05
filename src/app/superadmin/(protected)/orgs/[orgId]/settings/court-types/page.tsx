@@ -1,5 +1,6 @@
 // src/app/superadmin/orgs/[orgId]/court-types/page.tsx
 "use client";
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type CourtType = {
@@ -200,9 +201,13 @@ export default function CourtTypesPage({ params }: { params: { orgId: string } }
 
   return (
     <div className="p-6 max-w-6xl mx-auto relative text-text">
+        <Link href={`/superadmin/orgs/${orgId}/settings`} className="underline">
+          ← Volver a configuración
+        </Link>
       {Toast}
 
       <div className="flex items-center justify-between mb-4">
+    
         <h2 className="text-xl font-semibold">Tipos de cancha</h2>
         <button onClick={() => setOpenNew(true)} className="px-4 py-2 rounded text-white bg-green-600 hover:bg-green-700">Nuevo tipo</button>
       </div>

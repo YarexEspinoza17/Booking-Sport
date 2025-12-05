@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Site = {
@@ -253,6 +254,9 @@ export default function SitesPage({ params }: { params: { orgId: string } }) {
 
   return (
     <div className="p-6 max-w-6xl mx-auto relative text-text">
+        <Link href={`/superadmin/orgs/${orgId}/settings`} className="underline">
+          ← Volver a configuración
+        </Link>
       {Toast}
 
       <div className="flex items-center justify-between mb-4">

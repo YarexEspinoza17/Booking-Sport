@@ -1,6 +1,7 @@
-// src/app/api/public/reservations/hold/route.ts
+// src/app/api/public/price-preview/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { computePriceInt } from "@/lib/price-engine";
 import { isAvailable } from "@/lib/availability";
 
 export async function POST(req: NextRequest) {
@@ -57,44 +58,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verificar disponibilidad
+    // Calcular precio (usa el motor de precios)
+    const { priceInt, currency } = await computePriceInt(
+      site.org_id,
+      courtId,
+      starts,
+      ends,
+    );
+
+    // Ver disponibilidad
     const available = await isAvailable(
       courtId,
       starts.toISOString(),
       ends.toISOString(),
     );
 
-    if (!available) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Slot not available",
-        },
-        { status: 409 },
-      );
-    }
-
-    // Tiempo de expiración del hold (ej. +10 minutos)
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    const hold = await prisma.reservation_hold.create({
-      data: {
-        org_id: site.org_id,
-        site_id: siteId,
-        court_id: courtId,
-        starts_at: starts,
-        ends_at: ends,
-        status: "ACTIVE",
-        expires_at: expiresAt,
-      },
-    });
-
     return NextResponse.json({
       ok: true,
-      hold,
+      priceInt,
+      currency, // "CRC" | "USD"
+      available,
     });
   } catch (error) {
-    console.error("Error en /reservations/hold:", error);
+    console.error("Error en /price-preview:", error);
     return NextResponse.json(
       { ok: false, error: "Internal server error" },
       { status: 500 },

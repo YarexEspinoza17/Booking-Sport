@@ -17,15 +17,14 @@ model Org {
   updated_at            DateTime?               @updatedAt @db.Timestamptz(6)
   deleted_at            DateTime?               @db.Timestamptz(6)
   court                 Court[]
-  court_base_price      court_base_price[]
   court_blackout        court_blackout[]
+  court_price_ranges    court_price_range[]
   court_type            court_type[]
   court_weekly_schedule court_weekly_schedule[]
   customers             Customer[]
   employee              employee[]
   org_domain            org_domain[]
   payment               Payment[]
-  price_rule            price_rule[]
   reservation           Reservation[]
   reservation_hold      reservation_hold[]
   sites                 Site[]
@@ -66,10 +65,9 @@ model Court {
   court_type            court_type              @relation(fields: [court_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   org                   Org                     @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   site                  Site                    @relation(fields: [site_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  court_base_price      court_base_price?
   court_blackout        court_blackout[]
+  court_price_ranges    court_price_range[]
   court_weekly_schedule court_weekly_schedule[]
-  price_rule            price_rule[]
   reservation           Reservation[]
   reservation_hold      reservation_hold[]
 
@@ -93,9 +91,9 @@ model Reservation {
   hold_expires_at DateTime?                @db.Timestamptz(6)
   notes           String?
   created_at      DateTime                 @default(now()) @db.Timestamptz(6)
-  code            String                   @unique // NUEVO: código voucher
-  cancelled_at    DateTime?                @db.Timestamptz(6) // NUEVO
-  cancel_reason   String? // NUEVO
+  code            String                   @unique
+  cancelled_at    DateTime?                @db.Timestamptz(6)
+  cancel_reason   String?
   payments        Payment[]
   court           Court                    @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   employee        employee?                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -128,18 +126,6 @@ model Payment {
   @@map("payment")
 }
 
-/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model court_base_price {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  org_id     String   @db.Uuid
-  court_id   String   @unique @db.Uuid
-  currency   ccy      @default(CRC)
-  amount_int Int
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  court      Court    @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  org        Org      @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 /// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
@@ -161,7 +147,6 @@ model court_blackout {
   @@index([period], map: "idx_court_blackout_period_gist", type: Gist)
 }
 
-/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model court_type {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   org_id     String    @db.Uuid
@@ -246,22 +231,33 @@ model org_domain {
   org        Org      @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model price_rule {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  org_id      String    @db.Uuid
-  court_id    String    @db.Uuid
-  dow         Int?
-  start_local DateTime? @db.Time(6)
-  end_local   DateTime? @db.Time(6)
-  multiplier  Decimal?  @db.Decimal
-  add_int     Int?
-  created_at  DateTime  @default(now()) @db.Timestamptz(6)
-  court       Court     @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  org         Org       @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+/// Rangos de precio por cancha y día
+/// Esta tabla contiene check constraints y RLS a nivel SQL si los configuraste allí.
+model court_price_range {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id   String @db.Uuid
+  court_id String @db.Uuid
 
-  @@index([court_id])
+  /// 0 = lunes ... 6 = domingo
+  dow Int
+
+  /// Horas locales del rango
+  start_local DateTime @db.Time(6)
+  end_local   DateTime @db.Time(6)
+
+  /// Precio fijo para este rango
+  amount_int Int
+
+  /// Moneda del rango
+  currency ccy @default(CRC)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  court Court @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org   Org   @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([court_id, dow, start_local, end_local])
+  @@index([court_id, dow, start_local])
 }
 
 model reservation_hold {
@@ -276,13 +272,15 @@ model reservation_hold {
   status      hold_status               @default(ACTIVE)
   created_at  DateTime                  @default(now()) @db.Timestamptz(6)
   hold_range  Unsupported("tstzrange")? @default(dbgenerated("tstzrange(starts_at, ends_at, '[)'::text)"))
-  payments    Payment[]
-  court       Court                     @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  customer    Customer?                 @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  org         Org                       @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  site        Site                      @relation(fields: [site_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  payments Payment[]
+  court    Court     @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer Customer? @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org      Org       @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  site     Site      @relation(fields: [site_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([status, expires_at], map: "idx_reservation_hold_status_expires")
+  // Antes tenía: type: Gist, que Prisma no soporta con uuid + range
   @@index([court_id, hold_range], map: "idx_reservation_hold_court_range_gist")
   @@map("reservation_hold")
 }
@@ -309,7 +307,7 @@ model app_super_admin {
   created_at    DateTime @default(now()) @db.Timestamptz(6)
 }
 
-/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Enums
 enum hold_status {
   ACTIVE
   RELEASED
@@ -333,12 +331,12 @@ enum payment_status {
 }
 
 enum reservation_status {
-  HELD // aquí mapeamos mentalmente PENDING_PAYMENT
+  HELD
   CONFIRMED
   CANCELLED
   EXPIRED
-  CHECKED_IN // NUEVO
-  NO_SHOW // NUEVO
+  CHECKED_IN
+  NO_SHOW
 }
 
 enum user_role {

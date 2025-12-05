@@ -2,7 +2,7 @@
 import { headers } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 
-export async function getOrgFromRequest() {
+export async function getOrgFromRequest(req: unknown) {
   const host = headers().get('host') ?? ''; // p.ej. club-palma.booking-sport.com
   if (!host) {
     throw new Error('Host no disponible');

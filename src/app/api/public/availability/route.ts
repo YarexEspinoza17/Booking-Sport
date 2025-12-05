@@ -206,7 +206,12 @@ ORDER BY s.court_name, s.slot_start;
     `;
 
     // 3) Agrupar por cancha para la respuesta
-    const grouped = rows.reduce((acc, r) => {
+    const grouped = rows.reduce((acc: Record<string, {
+      court_id: string;
+      court_name: string;
+      court_type_id: string | null;
+      slots: { start: string; end: string }[];
+    }>, r: { court_id: string; court_name: string; court_type_id: string | null; slot_start: Date; slot_end: Date }) => {
       const key = r.court_id;
       if (!acc[key]) {
         acc[key] = {

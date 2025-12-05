@@ -1,28 +1,32 @@
 // src/lib/validation/pricing.ts
 import { z } from "zod";
 
-export const BasePriceUpsertZ = z.object({
-  currency: z.string().length(3).toUpperCase(),  // debe coincidir con su enum ccy (CRC/USD)
-  amount_int: z.number().int().nonnegative()
-});
+export const CourtPriceRangeCreateZ = z
+  .object({
+    // 0 = lunes ... 6 = domingo
+    dow: z
+      .number({ required_error: "El día de la semana es obligatorio" })
+      .int()
+      .min(0, "dow debe ser entre 0 y 6")
+      .max(6, "dow debe ser entre 0 y 6"),
 
-export const PriceRuleCreateZ = z.object({
-  dow: z.number().int().min(0).max(6).nullable().optional(), // null/omitir = no filtra por día
-  start_local: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
-  end_local: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
-  multiplier: z.union([z.number(), z.string()]).optional()
-    .transform(v => v === undefined ? undefined : Number(v)),
-  add_int: z.number().int().optional(),
-}).superRefine((d, ctx) => {
-  const s = d.start_local;
-  const e = d.end_local;
-  if ((s && !e) || (!s && e)) {
-    ctx.addIssue({ code: "custom", message: "Inicio y Fin deben venir juntos o ambos vacíos" });
-  }
-  if (s && e && e <= s) {
-    ctx.addIssue({ code: "custom", message: "Fin debe ser mayor que Inicio" });
-  }
-  if (d.multiplier !== undefined && d.multiplier <= 0) {
-    ctx.addIssue({ code: "custom", message: "Multiplier debe ser > 0" });
-  }
-});
+    // Formato HH:mm
+    start_local: z
+      .string({ required_error: "La hora de inicio es obligatoria" })
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora de inicio inválida, use HH:mm"),
+
+    end_local: z
+      .string({ required_error: "La hora de fin es obligatoria" })
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora de fin inválida, use HH:mm"),
+
+    amount_int: z
+      .number({ required_error: "El precio es obligatorio" })
+      .int("El precio debe ser entero")
+      .nonnegative("El precio debe ser mayor o igual a cero"),
+
+    currency: z.enum(["CRC", "USD"]).default("CRC"),
+  })
+  .refine((d) => d.start_local < d.end_local, {
+    path: ["end_local"],
+    message: "La hora de fin debe ser mayor que la hora de inicio",
+  });

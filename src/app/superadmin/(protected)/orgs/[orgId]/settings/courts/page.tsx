@@ -105,7 +105,7 @@ export default function CourtsPage({ params }: { params: { orgId: string } }) {
         <h1 className="text-2xl font-semibold">Canchas</h1>
         <Dialog>
           <DialogTrigger asChild>
-            <Button>Nuevo court</Button>
+            <Button>Nuevo Cancha</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[560px]">
             <DialogHeader>

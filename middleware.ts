@@ -1,18 +1,27 @@
+// middleware.ts
 import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { getSubdomainFromHost } from "./src/lib/subdomain";
 
-// solo protege endpoints de API del superadmin
 export const config = {
-  matcher: ["/api/superadmin/:path*"],   // 👈 nada de /superadmin páginas
+  matcher: ["/api/superadmin/:path*"],  // 👈 se mantiene igual
 };
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const host = req.headers.get("host");
+  const subdomain = getSubdomainFromHost(host);
 
-  // Deja pasar totalmente NextAuth
-  if (pathname.startsWith("/api/auth")) return NextResponse.next();
+  const res = NextResponse.next();
 
-  // Cookie de sesión correcta en dev/prod
+  // Por si algún día amplías el matcher y quieres que /api/auth pase intacto
+  if (pathname.startsWith("/api/auth")) {
+    if (subdomain) {
+      res.headers.set("x-subdomain", subdomain);
+    }
+    return res;
+  }
+
   const cookieName =
     process.env.NODE_ENV === "production"
       ? "__Secure-next-auth.session-token"
@@ -30,5 +39,9 @@ export async function middleware(req: NextRequest) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  return NextResponse.next();
+  if (subdomain) {
+    res.headers.set("x-subdomain", subdomain);
+  }
+
+  return res;
 }
