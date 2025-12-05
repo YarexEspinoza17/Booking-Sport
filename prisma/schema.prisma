@@ -1,111 +1,348 @@
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
-generator client { provider = "prisma-client-js" }
-
-model Organization {
-  id        String  @id @default(uuid())
-  slug      String  @unique
-  name      String
-  venues    Venue[]
-  users     User[]
-  createdAt DateTime @default(now())
+generator client {
+  provider = "prisma-client-js"
 }
 
-model Venue {
-  id             String  @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name           String
-  courts         Court[]
-  employees      EmployeeAssignment[]
-  createdAt      DateTime @default(now())
-  @@index([organizationId])
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Org {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                  String                  @unique
+  name                  String
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  is_deleted            Boolean?                @default(false)
+  updated_at            DateTime?               @updatedAt @db.Timestamptz(6)
+  deleted_at            DateTime?               @db.Timestamptz(6)
+  court                 Court[]
+  court_base_price      court_base_price[]
+  court_blackout        court_blackout[]
+  court_type            court_type[]
+  court_weekly_schedule court_weekly_schedule[]
+  customers             Customer[]
+  employee              employee[]
+  org_domain            org_domain[]
+  payment               Payment[]
+  price_rule            price_rule[]
+  reservation           Reservation[]
+  reservation_hold      reservation_hold[]
+  sites                 Site[]
+
+  @@map("org")
+}
+
+model Site {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id           String             @db.Uuid
+  name             String
+  timezone         String             @default("America/Costa_Rica")
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  address          String?            @db.VarChar
+  is_deleted       Boolean            @default(false)
+  deleted_at       DateTime?          @db.Timestamptz(6)
+  courts           Court[]
+  employee_site    employee_site[]
+  reservation      Reservation[]
+  reservation_hold reservation_hold[]
+  org              Org                @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("site")
 }
 
 model Court {
-  id       String @id @default(uuid())
-  venueId  String
-  venue    Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  name     String
-  type     String
-  reservations Reservation[]
-  @@index([venueId])
-}
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id                String                  @db.Uuid
+  site_id               String                  @db.Uuid
+  court_type_id         String                  @db.Uuid
+  name                  String
+  buffer_before_minutes Int                     @default(0)
+  buffer_after_minutes  Int                     @default(0)
+  active                Boolean                 @default(true)
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  is_deleted            Boolean?                @default(false)
+  deleted_at            DateTime?               @db.Timestamptz(6)
+  court_type            court_type              @relation(fields: [court_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org                   Org                     @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  site                  Site                    @relation(fields: [site_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  court_base_price      court_base_price?
+  court_blackout        court_blackout[]
+  court_weekly_schedule court_weekly_schedule[]
+  price_rule            price_rule[]
+  reservation           Reservation[]
+  reservation_hold      reservation_hold[]
 
-enum ReservationStatus { HELD PENDING_PAYMENT CONFIRMED CANCELLED REFUNDED NO_SHOW }
+  @@index([site_id])
+  @@map("court")
+}
 
 model Reservation {
-  id             String  @id @default(uuid())
-  organizationId String
-  venueId        String
-  courtId        String
-  userId         String?
-  startTime      DateTime
-  endTime        DateTime
-  priceCrc       Int
-  status         ReservationStatus @default(HELD)
-  paymentId      String?
-  createdAt      DateTime @default(now())
-  court Court @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  id              String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id          String                   @db.Uuid
+  site_id         String                   @db.Uuid
+  court_id        String                   @db.Uuid
+  customer_id     String?                  @db.Uuid
+  created_by      String?                  @db.Uuid
+  start_time      DateTime                 @db.Timestamptz(6)
+  end_time        DateTime                 @db.Timestamptz(6)
+  effective_range Unsupported("tstzrange")
+  currency        ccy                      @default(CRC)
+  price_int       Int
+  status          reservation_status       @default(HELD)
+  hold_expires_at DateTime?                @db.Timestamptz(6)
+  notes           String?
+  created_at      DateTime                 @default(now()) @db.Timestamptz(6)
+  code            String                   @unique // NUEVO: código voucher
+  cancelled_at    DateTime?                @db.Timestamptz(6) // NUEVO
+  cancel_reason   String? // NUEVO
+  payments        Payment[]
+  court           Court                    @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee        employee?                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer        Customer?                @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org             Org                      @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  site            Site                     @relation(fields: [site_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([organizationId, venueId, courtId, startTime, endTime])
-  @@index([status])
+  @@index([court_id, start_time])
+  @@index([effective_range], type: Gist)
+  @@index([org_id])
+  @@map("reservation")
 }
-
-model ReservationHold {
-  id             String   @id @default(uuid())
-  organizationId String
-  venueId        String
-  courtId        String
-  startTime      DateTime
-  endTime        DateTime
-  expiresAt      DateTime
-  createdAt      DateTime @default(now())
-  @@index([organizationId, venueId, courtId, startTime, endTime])
-  @@index([expiresAt])
-}
-
-enum PaymentStatus { INITIATED AUTHORIZED CAPTURED FAILED REFUNDED PARTIAL_REFUNDED }
 
 model Payment {
-  id             String @id @default(uuid())
-  organizationId String
-  reservationId  String
-  provider       String
-  externalId     String @unique
-  status         PaymentStatus @default(INITIATED)
-  amountCrc      Int
-  createdAt      DateTime @default(now())
-  reservation    Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
-  @@index([organizationId])
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id         String           @db.Uuid
+  reservation_id String?          @db.Uuid
+  provider       String           @default("tilopay")
+  external_id    String?          @unique
+  status         payment_status   @default(INITIATED)
+  currency       ccy              @default(CRC)
+  amount_int     Int
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  hold_id        String           @db.Uuid
+  hold           reservation_hold @relation(fields: [hold_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org            Org              @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reservation    Reservation?     @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  webhook_event  webhook_event[]
+
+  @@map("payment")
 }
 
-model WebhookEvent {
-  id         String @id @default(uuid())
-  provider   String
-  eventType  String
-  externalId String @unique
-  payload    Json
-  createdAt  DateTime @default(now())
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model court_base_price {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id     String   @db.Uuid
+  court_id   String   @unique @db.Uuid
+  currency   ccy      @default(CRC)
+  amount_int Int
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  court      Court    @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org        Org      @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model User {
-  id             String @id @default(uuid())
-  organizationId String
-  email          String @unique
-  name           String?
-  role           String
-  createdAt      DateTime @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  assignments    EmployeeAssignment[]
-  @@index([organizationId])
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model court_blackout {
+  id         String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id     String                    @db.Uuid
+  court_id   String                    @db.Uuid
+  starts_at  DateTime                  @db.Timestamptz(6)
+  ends_at    DateTime                  @db.Timestamptz(6)
+  reason     String?
+  created_at DateTime                  @default(now()) @db.Timestamptz(6)
+  is_deleted Boolean?                  @default(false)
+  deleted_at DateTime?                 @db.Timestamptz(6)
+  period     Unsupported("tstzrange")? @default(dbgenerated("tstzrange(starts_at, ends_at, '[)'::text)"))
+  court      Court                     @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org        Org                       @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([court_id], map: "idx_court_blackout_court_id")
+  @@index([period], map: "idx_court_blackout_period_gist", type: Gist)
 }
 
-model EmployeeAssignment {
-  id       String @id @default(uuid())
-  userId   String
-  venueId  String
-  user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  venue    Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  @@unique([userId, venueId])
-  @@index([venueId])
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model court_type {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id     String    @db.Uuid
+  code       String
+  name       String
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  is_deleted Boolean?  @default(false)
+  deleted_at DateTime? @db.Timestamptz(6)
+  court      Court[]
+  org        Org       @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model court_weekly_schedule {
+  id          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id      String                    @db.Uuid
+  court_id    String                    @db.Uuid
+  dow         Int
+  start_local DateTime                  @db.Time(6)
+  end_local   DateTime                  @db.Time(6)
+  created_at  DateTime                  @default(now()) @db.Timestamptz(6)
+  is_deleted  Boolean?                  @default(false)
+  deleted_at  DateTime?                 @db.Timestamptz(6)
+  local_span  Unsupported("int4range")? @default(dbgenerated("int4range(((EXTRACT(epoch FROM start_local))::integer / 60), ((EXTRACT(epoch FROM end_local))::integer / 60), '[)'::text)"))
+  court       Court                     @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org         Org                       @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([court_id, dow], map: "idx_court_weekly_schedule_court_dow")
+  @@index([local_span], map: "idx_court_weekly_schedule_span_gist", type: Gist)
+}
+
+model Customer {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id            String             @db.Uuid
+  email             String?
+  phone             String?
+  full_name         String?
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  is_deleted        Boolean?           @default(false)
+  deleted_at        DateTime?          @db.Timestamptz(6)
+  org               Org                @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reservations      Reservation[]
+  reservation_holds reservation_hold[]
+
+  @@map("customer")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model employee {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id        String          @db.Uuid
+  email         String          @unique
+  full_name     String?
+  role          user_role       @default(STAFF)
+  created_at    DateTime        @default(now()) @db.Timestamptz(6)
+  is_deleted    Boolean?        @default(false)
+  deleted_at    DateTime?       @db.Timestamptz(6)
+  org           Org             @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee_site employee_site[]
+  reservation   Reservation[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model employee_site {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id String    @db.Uuid
+  site_id     String    @db.Uuid
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  is_deleted  Boolean?  @default(false)
+  deleted_at  DateTime? @db.Timestamptz(6)
+  employee    employee  @relation(fields: [employee_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  site        Site      @relation(fields: [site_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model org_domain {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id     String   @db.Uuid
+  domain     String   @unique
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  org        Org      @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model price_rule {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id      String    @db.Uuid
+  court_id    String    @db.Uuid
+  dow         Int?
+  start_local DateTime? @db.Time(6)
+  end_local   DateTime? @db.Time(6)
+  multiplier  Decimal?  @db.Decimal
+  add_int     Int?
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  court       Court     @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org         Org       @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([court_id])
+}
+
+model reservation_hold {
+  id          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id      String                    @db.Uuid
+  site_id     String                    @db.Uuid
+  court_id    String                    @db.Uuid
+  customer_id String?                   @db.Uuid
+  starts_at   DateTime                  @db.Timestamptz(6)
+  ends_at     DateTime                  @db.Timestamptz(6)
+  expires_at  DateTime                  @default(dbgenerated("(now() + '00:10:00'::interval)")) @db.Timestamptz(6)
+  status      hold_status               @default(ACTIVE)
+  created_at  DateTime                  @default(now()) @db.Timestamptz(6)
+  hold_range  Unsupported("tstzrange")? @default(dbgenerated("tstzrange(starts_at, ends_at, '[)'::text)"))
+  payments    Payment[]
+  court       Court                     @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer    Customer?                 @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  org         Org                       @relation(fields: [org_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  site        Site                      @relation(fields: [site_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status, expires_at], map: "idx_reservation_hold_status_expires")
+  @@index([court_id, hold_range], map: "idx_reservation_hold_court_range_gist")
+  @@map("reservation_hold")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model webhook_event {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider    String
+  event_type  String
+  external_id String
+  payload     Json
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  payment_id  String?  @db.Uuid
+  payment     Payment? @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([provider, external_id])
+}
+
+model app_super_admin {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String   @unique
+  full_name     String?
+  password_hash String
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+enum hold_status {
+  ACTIVE
+  RELEASED
+  EXPIRED
+  USED
+}
+
+enum ccy {
+  CRC
+  USD
+}
+
+enum payment_status {
+  INITIATED
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum reservation_status {
+  HELD // aquí mapeamos mentalmente PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  CHECKED_IN // NUEVO
+  NO_SHOW // NUEVO
+}
+
+enum user_role {
+  OWNER
+  ADMIN
+  STAFF
 }
